@@ -1,0 +1,22 @@
+function:
+  name: GetPipelineStatusFn
+  runtime: python3.12
+  handler: handler.lambda_handler
+  description: |
+    Obtiene el estado actual del pipeline mostrando todos los nodos,
+    la posición actual, funciones disponibles por nodo y el flujo entre nodos.
+    Usa esta herramienta al inicio de la ejecución para orientarte,
+    o cuando necesites entender la estructura del pipeline.
+  timeout: 120
+  memory_size: 512
+
+  layers:
+    - foundationMinimal
+    - foundationApi
+
+  parameters:
+    required: []
+    optional: []
+
+  widget:
+    enabled: false

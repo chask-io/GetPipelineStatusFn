@@ -1,0 +1,13 @@
+{
+  "function_name": "GetPipelineStatusFn",
+  "args": {},
+  "widget_params": {},
+  "prompt": "",
+  "event_type": "function_call",
+  "extra_params": {},
+  "files": [],
+  "metadata": {
+    "description": "Basic test for GetPipelineStatusFn - no parameters needed",
+    "expected_status": "success"
+  }
+}
