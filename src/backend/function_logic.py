@@ -182,93 +182,51 @@ def _format_pipeline_status(data: dict) -> str:
 
 
 def _build_execution_order_section(nodes: list, edges: list, prerequisites_map: dict) -> list:
-    """Build execution order section showing tiers of nodes based on dependencies."""
+    """Build execution order using topological sort (Kahn's algorithm)."""
     lines = ["## 📋 Orden de Ejecución Recomendado\n"]
 
-    # Group nodes into execution tiers
-    # Tier 1: Nodes with no prerequisites (can start immediately)
-    # Tier 2: Nodes that depend on Tier 1, etc.
+    node_by_id = {n.get("id"): n for n in nodes}
+    all_node_ids = set(node_by_id.keys())
 
-    tier_1_nodes = []
-    waiting_nodes = []
+    # Kahn's algorithm: compute tiers by BFS layers
+    in_degree = {nid: len(prerequisites_map.get(nid, [])) for nid in all_node_ids}
+    tiers = []
+    processed = set()
 
-    for node in nodes:
-        node_id = node.get("id")
-        prereqs = prerequisites_map.get(node_id, [])
+    while True:
+        tier = [nid for nid in all_node_ids - processed if in_degree[nid] == 0]
+        if not tier:
+            break
+        tiers.append(tier)
+        for nid in tier:
+            processed.add(nid)
+            for other_id in all_node_ids - processed:
+                if nid in prerequisites_map.get(other_id, []):
+                    in_degree[other_id] -= 1
 
-        if not prereqs:
-            tier_1_nodes.append(node)
+    # Any remaining nodes are in cycles (shouldn't happen but handle gracefully)
+    remaining = all_node_ids - processed
+    if remaining:
+        tiers.append(list(remaining))
+
+    # Render each tier
+    for tier_num, tier_node_ids in enumerate(tiers, 1):
+        tier_nodes = [node_by_id[nid] for nid in tier_node_ids if nid in node_by_id]
+
+        if tier_num == 1:
+            lines.append(f"### Paso {tier_num}: Nodos Sin Prerequisitos (Empezar aquí)")
         else:
-            waiting_nodes.append(node)
+            prereq_tiers = ", ".join([str(t) for t in range(1, tier_num)])
+            lines.append(f"\n### Paso {tier_num}: Requiere completar paso(s) {prereq_tiers}")
 
-    # Show Tier 1 nodes (can start now)
-    if tier_1_nodes:
-        lines.append("### ✅ Nodos Sin Prerequisitos (Puedes empezar con estos):")
-        for node in tier_1_nodes:
+        for node in tier_nodes:
             node_id = node.get("id")
             title = node.get("title")
             status = node.get("status")
-            status_emoji = {"unassigned": "⚪", "assigned": "🔵", "in_progress": "🟡", "completed": "✅"}.get(status, "⚪")
-            lines.append(f"- {status_emoji} **Nodo {node_id}**: {title}")
+            emoji = {"unassigned": "⚪", "assigned": "🔵", "in_progress": "🟡", "completed": "✅"}.get(status, "⚪")
+            prereqs = prerequisites_map.get(node_id, [])
+            dep_str = f" ← requiere: {', '.join(f'Nodo {p}' for p in prereqs)}" if prereqs else ""
+            lines.append(f"- {emoji} **Nodo {node_id}**: {title}{dep_str}")
 
-    # Show waiting nodes grouped by their dependencies
-    if waiting_nodes:
-        lines.append("\n### ⏳ Nodos Con Prerequisitos (Completar en orden):")
-
-        # Group by prerequisite pattern
-        dependency_groups = {}
-        for node in waiting_nodes:
-            node_id = node.get("id")
-            prereqs = tuple(sorted(prerequisites_map.get(node_id, [])))  # Use tuple for dict key
-
-            if prereqs not in dependency_groups:
-                dependency_groups[prereqs] = []
-            dependency_groups[prereqs].append(node)
-
-        # Display each group
-        for prereq_tuple, group_nodes in dependency_groups.items():
-            prereq_list = list(prereq_tuple)
-
-            # Show the prerequisite requirement
-            if len(group_nodes) == 1:
-                # Single node waiting
-                node = group_nodes[0]
-                node_id = node.get("id")
-                title = node.get("title")
-                status = node.get("status")
-                status_emoji = {"unassigned": "⚪", "assigned": "🔵", "in_progress": "🟡", "completed": "✅"}.get(status, "⚪")
-
-                # Count completed prerequisites
-                completed_prereqs = sum(
-                    1 for prereq_id in prereq_list
-                    if any(n.get("id") == prereq_id and n.get("status") == "completed" for n in nodes)
-                )
-                total_prereqs = len(prereq_list)
-
-                lines.append(f"\n{status_emoji} **Nodo {node_id}**: {title}")
-                lines.append(f"   Requiere {total_prereqs} prerequisito(s) - **{completed_prereqs}/{total_prereqs} completados**")
-                lines.append(f"   Debe completar primero: {', '.join([f'Nodo {p}' for p in prereq_list])}")
-
-            else:
-                # Multiple nodes with same prerequisites
-                lines.append(f"\n**Grupo de {len(group_nodes)} nodos** que requieren los mismos prerequisitos:")
-
-                # Count completed prerequisites
-                completed_prereqs = sum(
-                    1 for prereq_id in prereq_list
-                    if any(n.get("id") == prereq_id and n.get("status") == "completed" for n in nodes)
-                )
-                total_prereqs = len(prereq_list)
-
-                lines.append(f"   ⚠️  Prerequisitos ({completed_prereqs}/{total_prereqs} completados): {', '.join([f'Nodo {p}' for p in prereq_list])}")
-                lines.append(f"   📌 Debes completar ✅ TODOS estos prerequisitos antes de operar cualquiera de:")
-
-                for node in group_nodes:
-                    node_id = node.get("id")
-                    title = node.get("title")
-                    status = node.get("status")
-                    status_emoji = {"unassigned": "⚪", "assigned": "🔵", "in_progress": "🟡", "completed": "✅"}.get(status, "⚪")
-                    lines.append(f"      - {status_emoji} Nodo {node_id}: {title}")
-
-    lines.append("")  # Add blank line
+    lines.append("")
     return lines
